@@ -1,8 +1,9 @@
 import pandas as pd
 from datasets import Dataset
 import torch
-from transformers import AutoTokenizer, AutoModelForTokenClassification, TrainingArguments, Trainer, TrainerCallback
+from transformers import AutoTokenizer, AutoModelForTokenClassification, TrainingArguments, Trainer
 from sklearn.preprocessing import LabelEncoder
+import joblib  # For saving the LabelEncoder
 
 def train_model():
     # Check if CUDA is available
@@ -15,6 +16,9 @@ def train_model():
     # Encode the Category column into numerical labels
     label_encoder = LabelEncoder()
     df["Category_encoded"] = label_encoder.fit_transform(df["Category"])
+
+    # Save the LabelEncoder for later use
+    joblib.dump(label_encoder, "./ner_model/label_encoder.pkl")
 
     # Convert the DataFrame to a Hugging Face Dataset
     dataset = Dataset.from_pandas(df[["Resume_str", "Category_encoded"]])
@@ -29,19 +33,19 @@ def train_model():
     model = AutoModelForTokenClassification.from_pretrained(model_name, num_labels=num_labels)
 
     def tokenize_and_align_labels(examples):
-                tokenized_inputs = tokenizer(
-                    examples["Resume_str"], truncation=True, padding="max_length", max_length=512
-                )
-                labels = examples["Category_encoded"]
+        tokenized_inputs = tokenizer(
+            examples["Resume_str"], truncation=True, padding="max_length", max_length=512
+        )
+        labels = examples["Category_encoded"]
 
-                # Ensure labels are token-level and match the sequence length
-                aligned_labels = []
-                for input_ids in tokenized_inputs["input_ids"]:
-                    label_sequence = [-100] * len(input_ids)  # Initialize with -100 for padding tokens
-                    aligned_labels.append(label_sequence)
+        # Ensure labels are token-level and match the sequence length
+        aligned_labels = []
+        for input_ids in tokenized_inputs["input_ids"]:
+            label_sequence = [-100] * len(input_ids)  # Initialize with -100 for padding tokens
+            aligned_labels.append(label_sequence)
 
-                tokenized_inputs["labels"] = aligned_labels
-                return tokenized_inputs
+        tokenized_inputs["labels"] = aligned_labels
+        return tokenized_inputs
 
     tokenized_datasets = dataset.map(tokenize_and_align_labels, batched=True)
 
